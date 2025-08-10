@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Leadership Inbox</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <div class="max-w-5xl mx-auto p-6">
+        <header class="flex items-center justify-between mb-6">
+            <h1 class="text-2xl font-bold">Leadership Inbox</h1>
+            <button id="btnConnect" class="px-4 py-2 rounded-xl bg-black text-white">Connect Wallet</button>
+        </header>
+
+        <div class="mb-4 flex gap-2">
+            <button id="tabLeader" class="px-3 py-2 rounded-lg bg-white shadow">Leadership</button>
+            <button id="tabUser" class="px-3 py-2 rounded-lg">Regular User</button>
+        </div>
+
+        <section id="leaderView" class="grid gap-6">
+            <div class="bg-white rounded-2xl shadow p-5">
+                <h2 class="font-semibold mb-3">Register / Keys</h2>
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm mb-1">Active Public Key (bytes32 hex)</label>
+                        <input id="activePubKey" class="w-full border rounded-xl p-2" readonly />
+                        <div class="mt-3 flex gap-2">
+                            <button id="btnGenRegister" class="px-3 py-2 rounded-lg bg-indigo-600 text-white">Generate &
+                                Register</button>
+                            <button id="btnRotate" class="px-3 py-2 rounded-lg bg-indigo-600 text-white">Rotate
+                                Key</button>
+                            <button id="btnCopyPub" class="px-3 py-2 rounded-lg border">Copy</button>
+                        </div>
+                        <div class="mt-2 flex gap-2">
+                            <button id="btnExportPriv" class="px-3 py-2 rounded-lg border">Export Private Key</button>
+                            <label class="px-3 py-2 rounded-lg border cursor-pointer">
+                                Import Private Key<input id="fileImportPriv" type="file" accept=".key,.txt"
+                                    class="hidden" />
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-1">Legacy Key (add/remove)</label>
+                        <input id="legacyKey" class="w-full border rounded-xl p-2" placeholder="0x…" />
+                        <div class="mt-3 flex gap-2">
+                            <button id="btnAddLegacy" class="px-3 py-2 rounded-lg border">Add Legacy</button>
+                            <button id="btnRemoveLegacy" class="px-3 py-2 rounded-lg border">Remove Legacy</button>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-2">Allowed keys define what senders may use to encrypt.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow p-5">
+                <h2 class="font-semibold mb-4">Your Queue</h2>
+                <div id="leaderBalances" class="text-sm text-slate-600 mb-3"></div>
+                <div id="leaderList" class="grid gap-3"></div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow p-5">
+                <h2 class="font-semibold mb-3">Withdraw</h2>
+                <div class="grid md:grid-cols-3 gap-3">
+                    <input id="wdToken" class="border rounded-xl p-2" placeholder="ERC20 address" />
+                    <input id="wdAmount" class="border rounded-xl p-2" placeholder="Amount (raw units)" />
+                    <input id="wdTo" class="border rounded-xl p-2" placeholder="Recipient (optional)" />
+                </div>
+                <button id="btnWithdraw" class="mt-3 px-3 py-2 rounded-lg bg-black text-white">Withdraw</button>
+            </div>
+        </section>
+
+        <section id="userView" class="hidden grid gap-6">
+            <div class="bg-white rounded-2xl shadow p-5">
+                <h2 class="font-semibold mb-3">Lookup Leadership</h2>
+                <div class="grid md:grid-cols-3 gap-3">
+                    <input id="inpLeaderAddr" class="border rounded-xl p-2" placeholder="Leader address (0x…)" />
+                    <button id="btnLookup" class="px-3 py-2 rounded-lg bg-black text-white">Load</button>
+                    <div id="leaderInfo" class="text-sm self-center"></div>
+                </div>
+                <div class="mt-4">
+                    <h3 class="font-medium mb-2">Top messages (encrypted)</h3>
+                    <div id="publicTop" class="grid gap-2"></div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow p-5">
+                <h2 class="font-semibold mb-3">Send a Message</h2>
+                <div class="grid md:grid-cols-2 gap-3">
+                    <textarea id="msgBody" class="border rounded-xl p-2 h-28"
+                        placeholder="Write your message…"></textarea>
+                    <div class="grid gap-3">
+                        <input id="feeToken" class="border rounded-xl p-2" placeholder="ERC20 token address" />
+                        <input id="feeAmount" class="border rounded-xl p-2" placeholder="Amount (e.g., 1.5)" />
+                        <button id="btnSend" class="px-3 py-2 rounded-lg bg-indigo-600 text-white">Approve &
+                            Send</button>
+                        <div id="sendStatus" class="text-sm text-slate-500"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow p-5">
+                <h2 class="font-semibold mb-3">Your Past Messages</h2>
+                <div id="userMsgs" class="grid gap-2"></div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // ====== CONFIG ======
+        const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // <- replace after deploy
+        const ABI = [
+            // views
+            "function version() view returns(string)",
+            "function getLeader(address) view returns (bool, bytes32)",
+            "function getLeaderKeys(address) view returns (bytes32[] memory, bool[] memory)",
+            "function leaderMessageIds(address) view returns (uint256[] memory)",
+            "function senderMessageIds(address) view returns (uint256[] memory)",
+            "function balances(address,address) view returns (uint256)",
+            // messages[] public getter
+            "function messages(uint256) view returns (address sender, address leader, address token, uint256 amount, uint64 timestamp, uint8 status, bytes32 pubkeyUsed, bytes data)",
+            // writes
+            "function registerLeader(bytes32)",
+            "function setActiveKey(bytes32)",
+            "function addLegacyKey(bytes32)",
+            "function removeLegacyKey(bytes32)",
+            "function sendMessage(address,address,uint256,bytes32,bytes) returns (uint256)",
+            "function markAsRead(uint256)",
+            "function markAsCompleted(uint256)",
+            "function withdraw(address,address,uint256)"
+        ];
+
+        const ERC20_ABI = [
+            "function decimals() view returns (uint8)",
+            "function allowance(address,address) view returns (uint256)",
+            "function approve(address,uint256) returns (bool)"
+        ];
+
+        // ====== ETH setup ======
+        let provider, signer, me, contract;
+        async function connect() {
+            if (!window.ethereum) { alert("Please install a wallet like MetaMask."); return; }
+            await ethereum.request({ method: 'eth_requestAccounts' });
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            signer = provider.getSigner();
+            me = await signer.getAddress();
+            contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+            document.getElementById('btnConnect').textContent = me.slice(0, 6) + "…" + me.slice(-4);
+            refreshLeaderUI();
+        }
+
+        // ====== UI helpers ======
+        function hexToUint8(hex) {
+            hex = hex.replace(/^0x/, '');
+            const bytes = new Uint8Array(hex.length / 2);
+            for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+            return bytes;
+        }
+        function uint8ToHex(arr) {
+            return '0x' + Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        function download(name, content) {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
+            a.download = name; a.click();
+        }
+
+        // ====== Key mgmt (NaCl) ======
+        function generateKeypair() { return nacl.box.keyPair(); }
+        function storeLeaderPriv(address, pubHex, privHex) {
+            localStorage.setItem(`leaderPriv:${address.toLowerCase()}:${pubHex.toLowerCase()}`, privHex);
+        }
+        function loadLeaderPriv(address, pubHex) {
+            return localStorage.getItem(`leaderPriv:${address.toLowerCase()}:${pubHex.toLowerCase()}`);
+        }
+
+        function encryptForLeader(messageUTF8, leaderPubHex) {
+            const leaderPub = hexToUint8(leaderPubHex);
+            const eph = generateKeypair();
+            const nonce = nacl.randomBytes(24);
+            const msgBytes = nacl.util.decodeUTF8(messageUTF8);
+            const boxed = nacl.box(msgBytes, nonce, leaderPub, eph.secretKey);
+            const payload = new Uint8Array(32 + 24 + boxed.length);
+            payload.set(eph.publicKey, 0);
+            payload.set(nonce, 32);
+            payload.set(boxed, 56);
+            return uint8ToHex(payload);
+        }
+        function decryptWithPriv(payloadHex, myPrivHex) {
+            const all = hexToUint8(payloadHex);
+            const ephPub = all.slice(0, 32);
+            const nonce = all.slice(32, 56);
+            const boxed = all.slice(56);
+            const myPriv = hexToUint8(myPrivHex);
+            const opened = nacl.box.open(boxed, nonce, ephPub, myPriv);
+            if (!opened) throw new Error('Decryption failed');
+            return nacl.util.encodeUTF8(opened);
+        }
+
+        // ====== Sorting ======
+        function sortMsgs(arr) {
+            return arr.sort((A, B) => {
+                if (A.amount.gt(B.amount)) return -1;
+                if (A.amount.lt(B.amount)) return 1;
+                return Number(A.timestamp) - Number(B.timestamp);
+            });
+        }
+
+        // ====== Leadership view ======
+        async function refreshLeaderUI() {
+            if (!contract || !me) return;
+            const [isLeader, activeKey] = await contract.getLeader(me);
+            document.getElementById('activePubKey').value = activeKey && activeKey !== ethers.constants.HashZero ? activeKey : '';
+            await loadLeaderQueue(me);
+        }
+
+        async function loadLeaderQueue(addr) {
+            const ids = await contract.leaderMessageIds(addr);
+            const msgs = [];
+            for (const id of ids) {
+                const m = await contract.messages(id);
+                msgs.push({ id: id.toNumber(), sender: m.sender, token: m.token, amount: m.amount, timestamp: m.timestamp, status: m.status, pubkeyUsed: m.pubkeyUsed, data: m.data });
+            }
+            sortMsgs(msgs);
+            const list = document.getElementById('leaderList');
+            list.innerHTML = '';
+            for (const m of msgs) {
+                const card = document.createElement('div');
+                card.className = 'border rounded-xl p-3 flex items-start justify-between gap-3';
+                const left = document.createElement('div');
+                left.innerHTML = `<div class="text-sm">From <span class="font-mono">${m.sender.slice(0, 6)}…${m.sender.slice(-4)}</span></div>
+      <div class="text-xs text-slate-600">Token: ${m.token} | Amount: ${m.amount.toString()} | Time: ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</div>
+      <details class="mt-2">
+        <summary class="cursor-pointer text-sm">Open</summary>
+        <div class="mt-2 text-sm">
+          <div class="mb-2"><button class="border px-2 py-1 rounded" data-act="decrypt">Decrypt</button> <span class="ml-2 text-slate-500" data-bind="out"></span></div>
+          <div class="font-mono text-xs break-all">${m.data}</div>
+        </div>
+      </details>`;
+                const right = document.createElement('div');
+                right.innerHTML = `<div class="flex gap-2">
+      <button class="px-2 py-1 rounded bg-amber-500 text-white" data-act="read">Mark Read</button>
+      <button class="px-2 py-1 rounded bg-emerald-600 text-white" data-act="done">Mark Completed</button>
+    </div>
+    <div class="text-xs mt-1 text-slate-600">Status: ${['New', 'Read', 'Completed'][m.status]}</div>`;
+                card.appendChild(left); card.appendChild(right);
+                list.appendChild(card);
+                card.querySelector('[data-act="decrypt"]').onclick = async () => {
+                    try {
+                        const activePub = document.getElementById('activePubKey').value;
+                        let priv = loadLeaderPriv(me, activePub);
+                        if (!priv) { alert('Import your private key first'); return; }
+                        const text = decryptWithPriv(m.data, priv);
+                        card.querySelector('[data-bind="out"]').textContent = text;
+                    } catch (e) { alert(e.message || e); }
+                };
+                card.querySelector('[data-act="read"]').onclick = async () => { await (await contract.markAsRead(m.id)).wait(); refreshLeaderUI(); };
+                card.querySelector('[data-act="done"]').onclick = async () => { await (await contract.markAsCompleted(m.id)).wait(); refreshLeaderUI(); };
+            }
+
+            // balances preview (simple: shows last token seen)
+            const balDiv = document.getElementById('leaderBalances');
+            if (msgs.length) {
+                const tokens = [...new Set(msgs.map(m => m.token))];
+                const rows = await Promise.all(tokens.map(async t => {
+                    const v = await contract.balances(me, t);
+                    return `${t}: ${v.toString()}`;
+                }));
+                balDiv.textContent = `Escrow balances → ` + rows.join(' | ');
+            } else balDiv.textContent = '';
+        }
+
+        // Buttons
+        const $ = s => document.getElementById(s);
+        $('btnConnect').onclick = connect;
+        $('btnGenRegister').onclick = async () => {
+            const kp = generateKeypair();
+            const pubHex = uint8ToHex(kp.publicKey);
+            const privHex = uint8ToHex(kp.secretKey);
+            await (await contract.registerLeader(pubHex)).wait();
+            storeLeaderPriv(me, pubHex, privHex);
+            $('activePubKey').value = pubHex;
+            alert('Registered. Private key saved in localStorage (and please export it).');
+            refreshLeaderUI();
+        };
+        $('btnRotate').onclick = async () => {
+            const kp = generateKeypair();
+            const pubHex = uint8ToHex(kp.publicKey);
+            const privHex = uint8ToHex(kp.secretKey);
+            await (await contract.setActiveKey(pubHex)).wait();
+            storeLeaderPriv(me, pubHex, privHex);
+            $('activePubKey').value = pubHex;
+            refreshLeaderUI();
+        };
+        $('btnCopyPub').onclick = () => {
+            navigator.clipboard.writeText($('activePubKey').value);
+        };
+        $('btnExportPriv').onclick = () => {
+            const pub = $('activePubKey').value; if (!pub) return alert('No active key');
+            const priv = loadLeaderPriv(me, pub);
+            if (!priv) return alert('Private key not found in localStorage for this pubkey');
+            download(`leader-${me.slice(0, 6)}-${pub.slice(2, 10)}.key`, priv);
+        };
+        $('fileImportPriv').onchange = async (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            const text = await file.text();
+            const pub = $('activePubKey').value; if (!pub) return alert('Import after you have an active key');
+            storeLeaderPriv(me, pub, text.trim());
+            alert('Private key imported for active pubkey.');
+        };
+        $('btnAddLegacy').onclick = async () => {
+            const k = $('legacyKey').value.trim(); if (!k) return;
+            await (await contract.addLegacyKey(k)).wait();
+            alert('Legacy key added.');
+        };
+        $('btnRemoveLegacy').onclick = async () => {
+            const k = $('legacyKey').value.trim(); if (!k) return;
+            await (await contract.removeLegacyKey(k)).wait();
+            alert('Legacy key removed.');
+        };
+        $('btnWithdraw').onclick = async () => {
+            const token = $('wdToken').value.trim();
+            const amt = $('wdAmount').value.trim();
+            const to = $('wdTo').value.trim() || me;
+            await (await contract.withdraw(token, to, ethers.BigNumber.from(amt))).wait();
+            alert('Withdrawn.');
+            refreshLeaderUI();
+        };
+
+        // ====== User view ======
+        $('tabLeader').onclick = () => { $('leaderView').classList.remove('hidden'); $('userView').classList.add('hidden'); $('tabLeader').classList.add('bg-white', 'shadow'); $('tabUser').classList.remove('bg-white', 'shadow'); };
+        $('tabUser').onclick = () => { $('leaderView').classList.add('hidden'); $('userView').classList.remove('hidden'); $('tabUser').classList.add('bg-white', 'shadow'); $('tabLeader').classList.remove('bg-white', 'shadow'); };
+
+        $('btnLookup').onclick = async () => {
+            if (!provider) provider = new ethers.providers.Web3Provider(window.ethereum || window);
+            const read = contract || new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
+            const leaderAddr = $('inpLeaderAddr').value.trim();
+            const [isLeader, activeKey] = await read.getLeader(leaderAddr);
+            $('leaderInfo').textContent = isLeader ? `Active key: ${activeKey}` : 'Not registered as leader';
+            const ids = await read.leaderMessageIds(leaderAddr);
+            const msgs = [];
+            for (const id of ids) { const m = await read.messages(id); msgs.push({ id: id.toNumber(), token: m.token, amount: m.amount, timestamp: m.timestamp }); }
+            sortMsgs(msgs);
+            const top = msgs.slice(0, 10);
+            const box = $('publicTop'); box.innerHTML = '';
+            for (const m of top) {
+                const row = document.createElement('div');
+                row.className = 'border rounded-xl p-3 text-sm flex justify-between';
+                row.innerHTML = `<span>${new Date(Number(m.timestamp) * 1000).toLocaleString()}</span><span class="font-mono">${m.amount.toString()}</span>`;
+                box.appendChild(row);
+            }
+
+            // If connected, show my messages & queue positions
+            if (contract && me) {
+                const mineIds = await read.senderMessageIds(me);
+                const mine = [];
+                for (const id of mineIds) { const m = await read.messages(id); if (m.leader.toLowerCase() === leaderAddr.toLowerCase()) mine.push({ id: id.toNumber(), amount: m.amount, timestamp: m.timestamp, status: m.status }); }
+                sortMsgs(msgs);
+                const sortedIds = msgs.map(x => x.id);
+                const ui = $('userMsgs'); ui.innerHTML = '';
+                for (const m of mine) {
+                    const pos = sortedIds.indexOf(m.id) + 1; // 1-based
+                    const row = document.createElement('div');
+                    row.className = 'border rounded-xl p-3 text-sm flex justify-between';
+                    row.innerHTML = `<span>ID #${m.id} — ${['New', 'Read', 'Completed'][m.status]}</span><span>Position: ${pos || '-'}</span>`;
+                    ui.appendChild(row);
+                }
+            }
+        };
+
+        $('btnSend').onclick = async () => {
+            if (!signer) return alert('Connect wallet first');
+            const leaderAddr = $('inpLeaderAddr').value.trim();
+            const [isLeader, activeKey] = await contract.getLeader(leaderAddr);
+            if (!isLeader || activeKey === ethers.constants.HashZero) return alert('Leader not set or missing key');
+
+            const token = $('feeToken').value.trim();
+            const amountHuman = $('feeAmount').value.trim();
+            const erc = new ethers.Contract(token, ERC20_ABI, signer);
+            const dec = await erc.decimals();
+            const amount = ethers.utils.parseUnits(amountHuman, dec);
+
+            $('sendStatus').textContent = 'Approving…';
+            const allowance = await erc.allowance(me, CONTRACT_ADDRESS);
+            if (allowance.lt(amount)) { await (await erc.approve(CONTRACT_ADDRESS, amount)).wait(); }
+
+            $('sendStatus').textContent = 'Encrypting…';
+            const cipherHex = encryptForLeader($('msgBody').value, activeKey);
+
+            $('sendStatus').textContent = 'Sending…';
+            const tx = await contract.sendMessage(leaderAddr, token, amount, activeKey, cipherHex);
+            await tx.wait();
+            $('sendStatus').textContent = 'Sent!';
+        };
+    </script>
+</body>
+
+</html>
