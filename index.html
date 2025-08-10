@@ -152,6 +152,18 @@
             document.getElementById('btnConnect').textContent = me.slice(0, 6) + "…" + me.slice(-4);
             refreshLeaderUI();
         }
+        // Attempt silent reconnect on page load (no popups) if the site is already authorized
+        async function silentConnect() {
+            if (!window.ethereum) return;
+            const accounts = await ethereum.request({ method: 'eth_accounts' });
+            if (!accounts || accounts.length === 0) return;
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            signer = provider.getSigner();
+            me = accounts[0];
+            contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+            document.getElementById('btnConnect').textContent = me.slice(0, 6) + "…" + me.slice(-4);
+            refreshLeaderUI();
+        }
 
         // ====== UI helpers ======
         function hexToUint8(hex) {
@@ -277,6 +289,25 @@
         // Buttons
         const $ = s => document.getElementById(s);
         $('btnConnect').onclick = connect;
+
+        // Auto-detect connection on refresh and handle account/chain changes
+        if (window.ethereum) {
+            silentConnect();
+            ethereum.on('accountsChanged', (accs) => {
+                if (accs && accs.length) {
+                    silentConnect();
+                } else {
+                    // disconnected
+                    provider = undefined; signer = undefined; me = undefined; contract = undefined;
+                    $('btnConnect').textContent = 'Connect Wallet';
+                }
+            });
+            ethereum.on('chainChanged', () => {
+                // ensure provider/contracts bind to the new network
+                window.location.reload();
+            });
+        }
+
         $('btnGenRegister').onclick = async () => {
             const kp = generateKeypair();
             const pubHex = uint8ToHex(kp.publicKey);
