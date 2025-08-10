@@ -15,7 +15,10 @@
     <div class="max-w-5xl mx-auto p-6">
         <header class="flex items-center justify-between mb-6">
             <h1 class="text-2xl font-bold">Priority Inbox</h1>
-            <button id="btnConnect" class="px-4 py-2 rounded-xl bg-black text-white">Connect Wallet</button>
+            <div class="flex items-center gap-2">
+                <button id="btnHelp" class="px-3 py-2 rounded-xl border">Help</button>
+                <button id="btnConnect" class="px-4 py-2 rounded-xl bg-black text-white">Connect Wallet</button>
+            </div>
         </header>
 
         <div class="mb-4 flex gap-2">
@@ -122,6 +125,47 @@
                 <div id="userMsgs" class="grid gap-2"></div>
             </div>
         </section>
+    </div>
+
+
+    // <!-- Help overlay -->
+    <div id="helpOverlay" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
+        <div class="min-h-full flex items-start md:items-center justify-center p-4">
+            <div id="helpPanel" class="w-full max-w-2xl bg-white rounded-2xl shadow-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold">How this works</h2>
+                    <button id="helpClose" class="px-2 py-1 rounded-lg border text-sm">Close</button>
+                </div>
+                <div class="space-y-4 text-sm">
+                    <div>
+                        <h3 class="font-medium mb-1">For Regular Users</h3>
+                        <ol class="list-decimal pl-5 space-y-1">
+                            <li>Paste a receiver address (or open with <span class="font-mono">?receiver=0x…</span>) and
+                                click <b>Load</b>.</li>
+                            <li>Connect your wallet (optional) to see your past messages and queue position.</li>
+                            <li>Write your message. Choose an ERC-20 fee amount; higher fee ranks higher.</li>
+                            <li>Click <b>Approve &amp; Send</b>. The message is encrypted in your browser.</li>
+                        </ol>
+                    </div>
+                    <div>
+                        <h3 class="font-medium mb-1">For Receivers</h3>
+                        <ol class="list-decimal pl-5 space-y-1">
+                            <li>Connect wallet and click <b>Generate &amp; Register</b> to create an encryption keypair.
+                            </li>
+                            <li><b>Export</b> your private key and store it safely. The public key is on-chain.</li>
+                            <li>Queue is sorted by fee → time. Click <b>Mark Read</b> to enable decryption, then decrypt
+                                and optionally <b>Mark Completed</b>.</li>
+                            <li>Use <b>Rotate Key</b> to change keys; old messages can be decrypted if you kept the old
+                                private key.</li>
+                        </ol>
+                    </div>
+                    <p class="text-xs text-slate-500">Tip: You can deep link to a receiver with <span
+                            class="font-mono">?receiver=0xABC…</span>. Press <kbd class="border px-1 rounded">Esc</kbd>
+                        to
+                        close this help.</p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -446,7 +490,7 @@
             const read = contract || new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
             const leaderAddr = $('inpLeaderAddr').value.trim();
             // keep URL in sync for deep links
-            setQueryParam('leader', leaderAddr);
+            setQueryParam('receiver', leaderAddr);
             const [isLeader, activeKey] = await read.getLeader(leaderAddr);
             $('leaderInfo').textContent = isLeader ? `Active key: ${activeKey} ` : 'Account NOT registered as receiver';
             const ids = await read.leaderMessageIds(leaderAddr);
@@ -526,7 +570,7 @@
         // === Deep link: prefill & auto-load from ?leader=0x... ===
         (() => {
             const params = new URLSearchParams(window.location.search);
-            const leaderFromURL = params.get('leader');
+            const leaderFromURL = params.get('receiver');
             if (leaderFromURL) {
                 $('tabUser').click();
                 $('inpLeaderAddr').value = leaderFromURL.trim();
@@ -550,6 +594,18 @@
                 el.textContent = 'Balance: —';
             }
         }
+
+
+        // Help overlay controls
+        function openHelp() { $('helpOverlay').classList.remove('hidden'); }
+        function closeHelp() { $('helpOverlay').classList.add('hidden'); }
+        if ($('btnHelp')) $('btnHelp').onclick = openHelp;
+        if ($('helpClose')) $('helpClose').onclick = closeHelp;
+        const _helpOverlayEl = document.getElementById('helpOverlay');
+        if (_helpOverlayEl) {
+            _helpOverlayEl.addEventListener('click', (e) => { if (e.target === _helpOverlayEl) closeHelp(); });
+        }
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeHelp(); });
     </script>
 </body>
 
