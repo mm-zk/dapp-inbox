@@ -296,34 +296,57 @@
                 const card = document.createElement('div');
                 card.className = 'border rounded-xl p-3 flex items-start justify-between gap-3';
                 const left = document.createElement('div');
+                const canDecrypt = Number(m.status) === 1; // only when Read
+
                 left.innerHTML = `<div class="text-sm">From <span class="font-mono">${m.sender.slice(0, 6)}…${m.sender.slice(-4)}</span></div>
       <div class="text-xs text-slate-600">Amount: ${ethers.utils.formatUnits(m.amount, tokenDecimals)} ${tokenSymbol} | Time: ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</div >
                 <details class="mt-2">
                     <summary class="cursor-pointer text-sm">Open</summary>
-                    <div class="mt-2 text-sm">
-                        <div class="mb-2"><button class="border px-2 py-1 rounded" data-act="decrypt">Decrypt</button> <span class="ml-2 text-slate-500" data-bind="out"></span></div>
+                    <div class="mb-2">
+                        ${canDecrypt
+                        ? '<button class="border px-2 py-1 rounded" data-act="decrypt">Decrypt</button> <span class="ml-2 text-slate-500" data-bind="out"></span>'
+                        : '<span class="text-xs text-slate-500">Mark as <b>Read</b> first to enable decryption.</span>'}
                         <div class="font-mono text-xs break-all">${m.data}</div>
                     </div>
                 </details>`;
                 const right = document.createElement('div');
+                const showReadBtn = Number(m.status) === 0; // only when New
+                const showDoneBtn = Number(m.status) === 1; // only show "Completed" after it's Read
+
                 right.innerHTML = `<div class="flex gap-2" >
-      <button class="px-2 py-1 rounded bg-amber-500 text-white" data-act="read">Mark Read</button>
-      <button class="px-2 py-1 rounded bg-emerald-600 text-white" data-act="done">Mark Completed</button>
+                    ${showReadBtn ? '<button class="px-2 py-1 rounded bg-amber-500 text-white" data-act="read">Mark Read</button>' : ''}
+                    ${showDoneBtn ? '<button class="px-2 py-1 rounded bg-emerald-600 text-white" data-act="done">Mark Completed</button>' : ''}
     </div >
                 <div class="text-xs mt-1 text-slate-600">Status: ${['New', 'Read', 'Completed'][m.status]}</div>`;
                 card.appendChild(left); card.appendChild(right);
                 list.appendChild(card);
-                card.querySelector('[data-act="decrypt"]').onclick = async () => {
-                    try {
-                        const activePub = document.getElementById('activePubKey').value;
-                        let priv = loadLeaderPriv(me, activePub);
-                        if (!priv) { alert('Import your private key first'); return; }
-                        const text = decryptWithPriv(m.data, priv);
-                        card.querySelector('[data-bind="out"]').textContent = text;
-                    } catch (e) { alert(e.message || e); }
-                };
-                card.querySelector('[data-act="read"]').onclick = async () => { await (await contract.markAsRead(m.id)).wait(); refreshLeaderUI(); };
-                card.querySelector('[data-act="done"]').onclick = async () => { await (await contract.markAsCompleted(m.id)).wait(); refreshLeaderUI(); };
+
+                const decBtn = card.querySelector('[data-act="decrypt"]');
+                if (decBtn) {
+                    decBtn.onclick = async () => {
+                        try {
+                            const activePub = document.getElementById('activePubKey').value;
+                            let priv = loadLeaderPriv(me, activePub);
+                            if (!priv) { alert('Import your private key first'); return; }
+                            const text = decryptWithPriv(m.data, priv);
+                            card.querySelector('[data-bind="out"]').textContent = text;
+                        } catch (e) { alert(e.message || e); }
+                    };
+                }
+
+                const readBtn = card.querySelector('[data-act="read"]');
+                if (readBtn) {
+                    readBtn.onclick = async () => { await (await contract.markAsRead(m.id)).wait(); refreshLeaderUI(); };
+                }
+                const doneBtn = card.querySelector('[data-act="done"]');
+                if (doneBtn) {
+                    doneBtn.onclick = async () => {
+                        const ok = confirm('Are you sure you want to mark this message as Completed?');
+                        if (!ok) return;
+                        await (await contract.markAsCompleted(m.id)).wait();
+                        refreshLeaderUI();
+                    };
+                }
             }
 
             // balances preview (simple: shows last token seen)
