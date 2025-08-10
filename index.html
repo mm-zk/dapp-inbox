@@ -276,10 +276,15 @@
                 const m = await contract.messages(id);
                 msgs.push({ id: id.toNumber(), sender: m.sender, amount: m.amount, timestamp: m.timestamp, status: m.status, pubkeyUsed: m.pubkeyUsed, data: m.data });
             }
-            sortMsgs(msgs);
+            //sortMsgs(msgs);
+            // hide completed (Status.Completed === 2)
+            const queue = msgs.filter(m => Number(m.status) !== 2);
+            sortMsgs(queue);
+
+
             const list = document.getElementById('leaderList');
             list.innerHTML = '';
-            for (const m of msgs) {
+            for (const m of queue) {
                 const card = document.createElement('div');
                 card.className = 'border rounded-xl p-3 flex items-start justify-between gap-3';
                 const left = document.createElement('div');
@@ -315,19 +320,14 @@
 
             // balances preview (simple: shows last token seen)
             const balDiv = document.getElementById('leaderBalances');
-            if (msgs.length) {
-                const token = await contract.acceptedToken();
-                const tokens = [token];
-                const erc = new ethers.Contract(token, ERC20_ABI, signer);
-                const decimals = await erc.decimals();
-                const symbol = await erc.symbol();
+            const token = await contract.acceptedToken();
+            const tokens = [token];
 
-                const rows = await Promise.all(tokens.map(async t => {
-                    const v = await contract.balances(me, t);
-                    return `${symbol}: ${ethers.utils.formatUnits(v, decimals)} `;
-                }));
-                balDiv.textContent = `Escrow balances → ` + rows.join(' | ');
-            } else balDiv.textContent = '';
+            const rows = await Promise.all(tokens.map(async t => {
+                const v = await contract.balances(me, t);
+                return `${tokenSymbol}: ${ethers.utils.formatUnits(v, decimals)} `;
+            }));
+            balDiv.textContent = `Escrow balances → ` + rows.join(' | ');
         }
 
         // Buttons
@@ -427,7 +427,7 @@
             for (const m of top) {
                 const row = document.createElement('div');
                 row.className = 'border rounded-xl p-3 text-sm flex justify-between';
-                row.innerHTML = `< span > ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</span > <span class="font-mono">${m.amount.toString()}</span>`;
+                row.innerHTML = `<span> ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</span > <span class="font-mono">${m.amount.toString()}</span>`;
                 box.appendChild(row);
             }
 
@@ -443,7 +443,7 @@
                     const pos = sortedIds.indexOf(m.id) + 1; // 1-based
                     const row = document.createElement('div');
                     row.className = 'border rounded-xl p-3 text-sm flex justify-between';
-                    row.innerHTML = `< span > ID #${m.id} — ${['New', 'Read', 'Completed'][m.status]}</span > <span>Position: ${pos || '-'}</span>`;
+                    row.innerHTML = `<span> ID #${m.id} — ${['New', 'Read', 'Completed'][m.status]}</span > <span>Position: ${pos || '-'}</span>`;
                     ui.appendChild(row);
                 }
             }
