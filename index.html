@@ -18,6 +18,12 @@
             <div class="flex items-center gap-2">
                 <button id="btnHelp" class="px-3 py-2 rounded-xl border">Help</button>
                 <button id="btnConnect" class="px-4 py-2 rounded-xl bg-black text-white">Connect Wallet</button>
+
+                <div id="netStatus"
+                    class="hidden text-xs bg-amber-100 text-amber-800 rounded-lg px-2 py-1 flex items-center gap-2">
+                    <span>Wrong network. Please switch to <span id="netExpected" class="font-medium">—</span>.</span>
+                    <button id="btnSwitchNetwork" class="px-2 py-1 rounded border">Switch</button>
+                </div>
             </div>
         </header>
 
@@ -171,6 +177,32 @@
     <script>
         // ====== CONFIG ======
         const CONTRACT_ADDRESS = "0x0165878A594ca255338adfa4d48449f69242Eb8F"; // <- replace after deploy
+        // Network config (hardcode your target network here)
+        const MAINNET_CHAIN_ID = '0x144'; // 0x144 = 324 (Matter mainnet), 0x7a69 - local testnet
+        const MAINNET_CHAIN_PARAMS = {
+            chainId: MAINNET_CHAIN_ID,
+            chainName: 'Zksync Era Mainnet',
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: ['https://mainnet.era.zksync.io'],
+            blockExplorerUrls: ['https://explorer.zksync.io/']
+        };
+
+        const LOCAL_CHAIN_ID = '0x7a69'; // 0x144 = 324 (Matter mainnet), 0x7a69 - local testnet
+        const LOCAL_CHAIN_PARAMS = {
+            chainId: LOCAL_CHAIN_ID,
+            chainName: 'Local Testnet',
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: ['http://localhost:8545'],
+            blockExplorerUrls: []
+        };
+
+
+        //const TARGET_CHAIN_ID = MAINNET_CHAIN_ID;
+        //const TARGET_CHAIN_PARAMS = MAINNET_CHAIN_PARAMS;
+        const TARGET_CHAIN_ID = LOCAL_CHAIN_ID;
+        const TARGET_CHAIN_PARAMS = LOCAL_CHAIN_PARAMS;
+
+
         const ABI = [
             // views
             "function version() view returns(string)",
@@ -210,6 +242,9 @@
         async function connect() {
             if (!window.ethereum) { alert("Please install a wallet like MetaMask."); return; }
             await ethereum.request({ method: 'eth_requestAccounts' });
+            const ok = await ensureCorrectNetwork();
+            if (!ok) { document.getElementById('btnConnect').textContent = 'Wrong network'; return; }
+
             provider = new ethers.providers.Web3Provider(window.ethereum);
             signer = provider.getSigner();
             me = await signer.getAddress();
@@ -228,6 +263,9 @@
             if (!window.ethereum) return;
             const accounts = await ethereum.request({ method: 'eth_accounts' });
             if (!accounts || accounts.length === 0) return;
+            const ok = await ensureCorrectNetwork();
+            if (!ok) { document.getElementById('btnConnect').textContent = 'Wrong network'; return; }
+
             provider = new ethers.providers.Web3Provider(window.ethereum);
             signer = provider.getSigner();
             me = accounts[0];
@@ -256,6 +294,29 @@
             const a = document.createElement('a');
             a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
             a.download = name; a.click();
+        }
+
+
+        // ====== Network helpers ======
+        async function ensureCorrectNetwork() {
+            if (!window.ethereum) return false;
+            const current = await ethereum.request({ method: 'eth_chainId' });
+            document.getElementById('netExpected').textContent = TARGET_CHAIN_PARAMS.chainName || TARGET_CHAIN_ID;
+            const mismatch = current !== TARGET_CHAIN_ID;
+            document.getElementById('netStatus').classList.toggle('hidden', !mismatch);
+            return !mismatch;
+        }
+        async function switchToTarget() {
+            try {
+                await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: TARGET_CHAIN_ID }] });
+            } catch (e) {
+                // Unrecognized chain -> try adding it
+                if (e && e.code === 4902) {
+                    await ethereum.request({ method: 'wallet_addEthereumChain', params: [TARGET_CHAIN_PARAMS] });
+                } else {
+                    throw e;
+                }
+            }
         }
 
         // URL param helpers
@@ -409,6 +470,22 @@
         const $ = s => document.getElementById(s);
         $('btnConnect').onclick = connect;
 
+        $('btnSwitchNetwork').onclick = switchToTarget;
+
+        // Auto-check network & react to changes
+        if (window.ethereum) {
+            ensureCorrectNetwork();
+            ethereum.on('chainChanged', () => { location.reload(); });
+            ethereum.on('accountsChanged', async (accs) => {
+                // Refresh network indicator and UI when accounts change
+                await ensureCorrectNetwork();
+                if (!accs || !accs.length) {
+                    provider = signer = contract = undefined; me = undefined;
+                    $('btnConnect').textContent = 'Connect Wallet';
+                }
+            });
+        }
+
         // Auto-detect connection on refresh and handle account/chain changes
         if (window.ethereum) {
             silentConnect();
@@ -454,7 +531,7 @@
             const pub = $('activePubKey').value; if (!pub) return alert('No active key');
             const priv = loadLeaderPriv(me, pub);
             if (!priv) return alert('Private key not found in localStorage for this pubkey');
-            download(`leader - ${me.slice(0, 6)} -${pub.slice(2, 10)}.key`, priv);
+            download(`leader-${me.slice(0, 6)}-${pub.slice(2, 10)}.key`, priv);
         };
         $('fileImportPriv').onchange = async (e) => {
             const file = e.target.files[0]; if (!file) return;
