@@ -8,6 +8,7 @@ contract LeadershipInbox {
     uint256 private constant _NOT_ENTERED = 1;
     uint256 private constant _ENTERED = 2;
     uint256 private _status;
+    address public acceptedToken;
 
     modifier nonReentrant() {
         require(_status != _ENTERED, "REENTRANCY");
@@ -16,7 +17,8 @@ contract LeadershipInbox {
         _status = _NOT_ENTERED;
     }
 
-    constructor() { _status = _NOT_ENTERED; }
+    constructor(address _acceptedToken) { _status = _NOT_ENTERED; acceptedToken = _acceptedToken; }
+
 
     // ===== ERC20 safe call helpers =====
     function _safeTransferFrom(address token, address from, address to, uint256 value) internal {
@@ -34,7 +36,6 @@ contract LeadershipInbox {
     struct Msg {
         address sender;
         address leader;
-        address token;
         uint256 amount;
         uint64  timestamp;
         Status  status;
@@ -137,7 +138,6 @@ contract LeadershipInbox {
     // ===== Messaging =====
     function sendMessage(
         address leader,
-        address token,
         uint256 amount,
         bytes32 pubkeyUsed,
         bytes calldata ciphertext
@@ -147,15 +147,13 @@ contract LeadershipInbox {
         require(L.allowed[pubkeyUsed], "KEY_NOT_ALLOWED");
 
         if (amount > 0) {
-            require(token != address(0), "TOKEN_REQ");
-            _safeTransferFrom(token, msg.sender, address(this), amount);
-            balances[leader][token] += amount;
+            _safeTransferFrom(acceptedToken, msg.sender, address(this), amount);
+            balances[leader][acceptedToken] += amount;
         }
 
         Msg memory m = Msg({
             sender: msg.sender,
             leader: leader,
-            token: token,
             amount: amount,
             timestamp: uint64(block.timestamp),
             status: Status.New,
@@ -167,7 +165,7 @@ contract LeadershipInbox {
         id = messages.length - 1;
         leaderToMsgIds[leader].push(id);
         senderToMsgIds[msg.sender].push(id);
-        emit MessageSent(id, leader, msg.sender, token, amount);
+        emit MessageSent(id, leader, msg.sender, acceptedToken, amount);
     }
 
     function markAsRead(uint256 id) external onlyLeaderOf(id) {
@@ -192,13 +190,13 @@ contract LeadershipInbox {
     }
 
     // ===== Withdrawals =====
-    function withdraw(address token, address to, uint256 amount) external onlyLeader nonReentrant {
+    function withdraw(address to, uint256 amount) external onlyLeader nonReentrant {
         require(to != address(0), "BAD_TO");
-        uint256 bal = balances[msg.sender][token];
+        uint256 bal = balances[msg.sender][acceptedToken];
         require(amount <= bal, "INSUFFICIENT");
-        balances[msg.sender][token] = bal - amount;
-        _safeTransfer(token, to, amount);
-        emit Withdrawal(msg.sender, token, to, amount);
+        balances[msg.sender][acceptedToken] = bal - amount;
+        _safeTransfer(acceptedToken, to, amount);
+        emit Withdrawal(msg.sender, acceptedToken, to, amount);
     }
 
     function version() external pure returns (string memory) { return "1.0.0"; }

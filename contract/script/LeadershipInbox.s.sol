@@ -11,8 +11,9 @@ contract InboxScript is Script {
 
     function run() public {
         vm.startBroadcast();
+        address acceptedToken = 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0;
 
-        inbox = new LeadershipInbox();
+        inbox = new LeadershipInbox(acceptedToken);
 
         vm.stopBroadcast();
     }

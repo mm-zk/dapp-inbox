@@ -66,7 +66,6 @@
             <div class="bg-white rounded-2xl shadow p-5">
                 <h2 class="font-semibold mb-3">Withdraw</h2>
                 <div class="grid md:grid-cols-3 gap-3">
-                    <input id="wdToken" class="border rounded-xl p-2" placeholder="ERC20 address" />
                     <input id="wdAmount" class="border rounded-xl p-2" placeholder="Amount (raw units)" />
                     <input id="wdTo" class="border rounded-xl p-2" placeholder="Recipient (optional)" />
                 </div>
@@ -80,7 +79,8 @@
                 <div class="grid md:grid-cols-3 gap-3">
                     <input id="inpLeaderAddr" class="border rounded-xl p-2" placeholder="Leader address (0x…)" />
                     <button id="btnLookup" class="px-3 py-2 rounded-lg bg-black text-white">Load</button>
-                    <div id="leaderInfo" class="text-sm self-center"></div>
+                    <div id="leaderInfo" class="text-xs self-center bg-slate-100 rounded p-2 font-mono w-full truncate"
+                        title=""></div>
                 </div>
                 <div class="mt-4">
                     <h3 class="font-medium mb-2">Top messages (encrypted)</h3>
@@ -94,7 +94,18 @@
                     <textarea id="msgBody" class="border rounded-xl p-2 h-28"
                         placeholder="Write your message…"></textarea>
                     <div class="grid gap-3">
-                        <input id="feeToken" class="border rounded-xl p-2" placeholder="ERC20 token address" />
+                        <div class="grid grid-cols-3 gap-3">
+                            <div class="md:col-span-1">
+                                <label class="block text-sm mb-1">Token</label>
+                                <div id="feeTokenName" class="border rounded-xl p-2 bg-slate-100 select-text">—</div>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-sm mb-1">Token Address</label>
+                                <div id="feeTokenAddr"
+                                    class="border rounded-xl p-2 bg-slate-100 font-mono select-text w-full truncate">
+                                    —</div>
+                            </div>
+                        </div>
                         <input id="feeAmount" class="border rounded-xl p-2" placeholder="Amount (e.g., 1.5)" />
                         <button id="btnSend" class="px-3 py-2 rounded-lg bg-indigo-600 text-white">Approve &
                             Send</button>
@@ -112,7 +123,7 @@
 
     <script>
         // ====== CONFIG ======
-        const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // <- replace after deploy
+        const CONTRACT_ADDRESS = "0x0165878A594ca255338adfa4d48449f69242Eb8F"; // <- replace after deploy
         const ABI = [
             // views
             "function version() view returns(string)",
@@ -121,23 +132,26 @@
             "function leaderMessageIds(address) view returns (uint256[] memory)",
             "function senderMessageIds(address) view returns (uint256[] memory)",
             "function balances(address,address) view returns (uint256)",
+            "function acceptedToken() view returns (address)",
             // messages[] public getter
-            "function messages(uint256) view returns (address sender, address leader, address token, uint256 amount, uint64 timestamp, uint8 status, bytes32 pubkeyUsed, bytes data)",
+            "function messages(uint256) view returns (address sender, address leader, uint256 amount, uint64 timestamp, uint8 status, bytes32 pubkeyUsed, bytes data)",
             // writes
             "function registerLeader(bytes32)",
             "function setActiveKey(bytes32)",
             "function addLegacyKey(bytes32)",
             "function removeLegacyKey(bytes32)",
-            "function sendMessage(address,address,uint256,bytes32,bytes) returns (uint256)",
+            "function sendMessage(address,uint256,bytes32,bytes) returns (uint256)",
             "function markAsRead(uint256)",
             "function markAsCompleted(uint256)",
-            "function withdraw(address,address,uint256)"
+            "function withdraw(address,uint256)"
         ];
 
         const ERC20_ABI = [
             "function decimals() view returns (uint8)",
             "function allowance(address,address) view returns (uint256)",
-            "function approve(address,uint256) returns (bool)"
+            "function approve(address,uint256) returns (bool)",
+            "function name() view returns (string)",
+            "function symbol() view returns (string)",
         ];
 
         // ====== ETH setup ======
@@ -233,6 +247,16 @@
         // ====== Leadership view ======
         async function refreshLeaderUI() {
             if (!contract || !me) return;
+            const token = await contract.acceptedToken();
+            // get token name and symbol
+            const erc = new ethers.Contract(token, ERC20_ABI, provider);
+            const name = await erc.name();
+            const symbol = await erc.symbol();
+            document.getElementById('feeTokenName').textContent = name;
+            document.getElementById('feeTokenAddr').textContent = token;
+
+            //document.getElementById('wdToken').value = token;
+            //document.getElementById('wdToken').placeholder = `${name} (${symbol})`;
             const [isLeader, activeKey] = await contract.getLeader(me);
             document.getElementById('activePubKey').value = activeKey && activeKey !== ethers.constants.HashZero ? activeKey : '';
             await loadLeaderQueue(me);
@@ -243,7 +267,7 @@
             const msgs = [];
             for (const id of ids) {
                 const m = await contract.messages(id);
-                msgs.push({ id: id.toNumber(), sender: m.sender, token: m.token, amount: m.amount, timestamp: m.timestamp, status: m.status, pubkeyUsed: m.pubkeyUsed, data: m.data });
+                msgs.push({ id: id.toNumber(), sender: m.sender, amount: m.amount, timestamp: m.timestamp, status: m.status, pubkeyUsed: m.pubkeyUsed, data: m.data });
             }
             sortMsgs(msgs);
             const list = document.getElementById('leaderList');
@@ -253,7 +277,7 @@
                 card.className = 'border rounded-xl p-3 flex items-start justify-between gap-3';
                 const left = document.createElement('div');
                 left.innerHTML = `<div class="text-sm">From <span class="font-mono">${m.sender.slice(0, 6)}…${m.sender.slice(-4)}</span></div>
-      <div class="text-xs text-slate-600">Token: ${m.token} | Amount: ${m.amount.toString()} | Time: ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</div>
+      <div class="text-xs text-slate-600">Amount: ${m.amount.toString()} | Time: ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</div>
       <details class="mt-2">
         <summary class="cursor-pointer text-sm">Open</summary>
         <div class="mt-2 text-sm">
@@ -362,10 +386,9 @@
             alert('Legacy key removed.');
         };
         $('btnWithdraw').onclick = async () => {
-            const token = $('wdToken').value.trim();
             const amt = $('wdAmount').value.trim();
             const to = $('wdTo').value.trim() || me;
-            await (await contract.withdraw(token, to, ethers.BigNumber.from(amt))).wait();
+            await (await contract.withdraw(to, ethers.BigNumber.from(amt))).wait();
             alert('Withdrawn.');
             refreshLeaderUI();
         };
@@ -381,7 +404,7 @@
             // keep URL in sync for deep links
             setQueryParam('leader', leaderAddr);
             const [isLeader, activeKey] = await read.getLeader(leaderAddr);
-            $('leaderInfo').textContent = isLeader ? `Active key: ${activeKey}` : 'Not registered as leader';
+            $('leaderInfo').textContent = isLeader ? `Active key: ${activeKey}` : 'Account NOT registered as receiver';
             const ids = await read.leaderMessageIds(leaderAddr);
             const msgs = [];
             for (const id of ids) { const m = await read.messages(id); msgs.push({ id: id.toNumber(), token: m.token, amount: m.amount, timestamp: m.timestamp }); }
@@ -419,7 +442,7 @@
             const [isLeader, activeKey] = await contract.getLeader(leaderAddr);
             if (!isLeader || activeKey === ethers.constants.HashZero) return alert('Leader not set or missing key');
 
-            const token = $('feeToken').value.trim();
+            const token = $('feeTokenAddr').textContent.trim();
             const amountHuman = $('feeAmount').value.trim();
             const erc = new ethers.Contract(token, ERC20_ABI, signer);
             const dec = await erc.decimals();
@@ -433,7 +456,7 @@
             const cipherHex = encryptForLeader($('msgBody').value, activeKey);
 
             $('sendStatus').textContent = 'Sending…';
-            const tx = await contract.sendMessage(leaderAddr, token, amount, activeKey, cipherHex);
+            const tx = await contract.sendMessage(leaderAddr, amount, activeKey, cipherHex);
             await tx.wait();
             $('sendStatus').textContent = 'Sent!';
         };
