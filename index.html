@@ -335,6 +335,13 @@
         function loadLeaderPriv(address, pubHex) {
             return localStorage.getItem(`leaderPriv:${address.toLowerCase()}:${pubHex.toLowerCase()}`);
         }
+        // Derive X25519 (NaCl.box) public key from a 32-byte private key (hex)
+        function derivePublicFromPrivate(privHex) {
+            const sk = hexToUint8(privHex);
+            if (sk.length !== 32) throw new Error('Expected 32-byte secret key for nacl.box (hex-encoded)');
+            const kp = nacl.box.keyPair.fromSecretKey(sk);
+            return uint8ToHex(kp.publicKey);
+        }
 
         function encryptForLeader(messageUTF8, leaderPubHex) {
             const leaderPub = hexToUint8(leaderPubHex);
@@ -404,7 +411,7 @@
                 const canDecrypt = Number(m.status) === 1; // only when Read
 
                 left.innerHTML = `<div class="text-sm">From <span class="font-mono">${m.sender.slice(0, 6)}…${m.sender.slice(-4)}</span></div>
-      <div class="text-xs text-slate-600">Amount: ${ethers.utils.formatUnits(m.amount, tokenDecimals)} ${tokenSymbol} | Time: ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</div >
+      <div class="text-xs text-slate-600">Amount: ${ethers.utils.formatUnits(m.amount, tokenDecimals)} ${tokenSymbol} | Time: ${new Date(Number(m.timestamp) * 1000).toLocaleString()} | Key: ${m.pubkeyUsed.slice(0, 6)}…${m.pubkeyUsed.slice(-4)}</div >
                 <details class="mt-2">
                     <summary class="cursor-pointer text-sm">Open</summary>
                     <div class="mb-2">
@@ -536,7 +543,10 @@
         $('fileImportPriv').onchange = async (e) => {
             const file = e.target.files[0]; if (!file) return;
             const text = await file.text();
-            const pub = $('activePubKey').value; if (!pub) return alert('Import after you have an active key');
+
+            const pub = derivePublicFromPrivate(text.trim());
+            if (!ethers.utils.isHexString(pub, 32)) return alert('Invalid private key format (expected 32-byte hex)');
+            $('activePubKey').value = pub;
             storeLeaderPriv(me, pub, text.trim());
             alert('Private key imported for active pubkey.');
         };
