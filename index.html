@@ -19,11 +19,11 @@
         </header>
 
         <div class="mb-4 flex gap-2">
-            <button id="tabLeader" class="px-3 py-2 rounded-lg bg-white shadow">Leadership</button>
-            <button id="tabUser" class="px-3 py-2 rounded-lg">Regular User</button>
+            <button id="tabUser" class="px-3 py-2 rounded-lg bg-white shadow">Sender</button>
+            <button id="tabLeader" class="px-3 py-2 rounded-lg">Receiver</button>
         </div>
 
-        <section id="leaderView" class="grid gap-6">
+        <section id="leaderView" class="hidden grid gap-6">
             <div class="bg-white rounded-2xl shadow p-5">
                 <h2 class="font-semibold mb-3">Register / Keys</h2>
                 <div class="grid md:grid-cols-2 gap-4">
@@ -74,7 +74,7 @@
             </div>
         </section>
 
-        <section id="userView" class="hidden grid gap-6">
+        <section id="userView" class="grid gap-6">
             <div class="bg-white rounded-2xl shadow p-5">
                 <h2 class="font-semibold mb-3">Lookup Leadership</h2>
                 <div class="grid md:grid-cols-3 gap-3">
@@ -179,6 +179,14 @@
             const a = document.createElement('a');
             a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
             a.download = name; a.click();
+        }
+
+        // URL param helpers
+        function setQueryParam(key, value) {
+            const url = new URL(window.location.href);
+            if (value) url.searchParams.set(key, value);
+            else url.searchParams.delete(key);
+            history.replaceState(null, '', url);
         }
 
         // ====== Key mgmt (NaCl) ======
@@ -370,6 +378,8 @@
             if (!provider) provider = new ethers.providers.Web3Provider(window.ethereum || window);
             const read = contract || new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
             const leaderAddr = $('inpLeaderAddr').value.trim();
+            // keep URL in sync for deep links
+            setQueryParam('leader', leaderAddr);
             const [isLeader, activeKey] = await read.getLeader(leaderAddr);
             $('leaderInfo').textContent = isLeader ? `Active key: ${activeKey}` : 'Not registered as leader';
             const ids = await read.leaderMessageIds(leaderAddr);
@@ -427,6 +437,16 @@
             await tx.wait();
             $('sendStatus').textContent = 'Sent!';
         };
+        // === Deep link: prefill & auto-load from ?leader=0x... ===
+        (() => {
+            const params = new URLSearchParams(window.location.search);
+            const leaderFromURL = params.get('leader');
+            if (leaderFromURL) {
+                $('tabUser').click();
+                $('inpLeaderAddr').value = leaderFromURL.trim();
+                $('btnLookup').click();
+            }
+        })();
     </script>
 </body>
 
