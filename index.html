@@ -160,7 +160,9 @@
         ];
 
         // ====== ETH setup ======
-        let provider, signer, me, contract;
+        let provider, signer, me, contract, tokenAddress, tokenName, tokenSymbol, tokenDecimals;
+
+
         async function connect() {
             if (!window.ethereum) { alert("Please install a wallet like MetaMask."); return; }
             await ethereum.request({ method: 'eth_requestAccounts' });
@@ -168,6 +170,12 @@
             signer = provider.getSigner();
             me = await signer.getAddress();
             contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+            tokenAddress = await contract.acceptedToken();
+            const erc = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+            tokenName = await erc.name();
+            tokenSymbol = await erc.symbol();
+            tokenDecimals = await erc.decimals();
+
             document.getElementById('btnConnect').textContent = me.slice(0, 6) + "…" + me.slice(-4);
             refreshLeaderUI();
         }
@@ -180,6 +188,12 @@
             signer = provider.getSigner();
             me = accounts[0];
             contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+            tokenAddress = await contract.acceptedToken();
+            const erc = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+            tokenName = await erc.name();
+            tokenSymbol = await erc.symbol();
+            tokenDecimals = await erc.decimals();
+
             document.getElementById('btnConnect').textContent = me.slice(0, 6) + "…" + me.slice(-4);
             refreshLeaderUI();
         }
@@ -252,24 +266,18 @@
         // ====== Leadership view ======
         async function refreshLeaderUI() {
             if (!contract || !me) return;
-            const token = await contract.acceptedToken();
-            // get token name and symbol
-            const erc = new ethers.Contract(token, ERC20_ABI, provider);
-            const name = await erc.name();
-            const symbol = await erc.symbol();
-            const decimals = await erc.decimals();
-            document.getElementById('feeTokenName').textContent = name;
-            document.getElementById('feeTokenAddr').textContent = token;
+            document.getElementById('feeTokenName').textContent = tokenName;
+            document.getElementById('feeTokenAddr').textContent = tokenAddress;
 
             //document.getElementById('wdToken').value = token;
             //document.getElementById('wdToken').placeholder = `${name} (${symbol})`;
             const [isLeader, activeKey] = await contract.getLeader(me);
             document.getElementById('activePubKey').value = activeKey && activeKey !== ethers.constants.HashZero ? activeKey : '';
-            await loadLeaderQueue(me, symbol, decimals);
+            await loadLeaderQueue(me);
             await refreshUserBalance();
         }
 
-        async function loadLeaderQueue(addr, tokenSymbol, decimals) {
+        async function loadLeaderQueue(addr) {
             const ids = await contract.leaderMessageIds(addr);
             const msgs = [];
             for (const id of ids) {
@@ -289,7 +297,7 @@
                 card.className = 'border rounded-xl p-3 flex items-start justify-between gap-3';
                 const left = document.createElement('div');
                 left.innerHTML = `<div class="text-sm">From <span class="font-mono">${m.sender.slice(0, 6)}…${m.sender.slice(-4)}</span></div>
-      <div class="text-xs text-slate-600">Amount: ${ethers.utils.formatUnits(m.amount, decimals)} ${tokenSymbol} | Time: ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</div >
+      <div class="text-xs text-slate-600">Amount: ${ethers.utils.formatUnits(m.amount, tokenDecimals)} ${tokenSymbol} | Time: ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</div >
                 <details class="mt-2">
                     <summary class="cursor-pointer text-sm">Open</summary>
                     <div class="mt-2 text-sm">
@@ -325,7 +333,7 @@
 
             const rows = await Promise.all(tokens.map(async t => {
                 const v = await contract.balances(me, t);
-                return `${tokenSymbol}: ${ethers.utils.formatUnits(v, decimals)} `;
+                return `${tokenSymbol}: ${ethers.utils.formatUnits(v, tokenDecimals)} `;
             }));
             balDiv.textContent = `Escrow balances → ` + rows.join(' | ');
         }
@@ -420,14 +428,34 @@
             $('leaderInfo').textContent = isLeader ? `Active key: ${activeKey} ` : 'Account NOT registered as receiver';
             const ids = await read.leaderMessageIds(leaderAddr);
             const msgs = [];
-            for (const id of ids) { const m = await read.messages(id); msgs.push({ id: id.toNumber(), token: m.token, amount: m.amount, timestamp: m.timestamp }); }
-            sortMsgs(msgs);
-            const top = msgs.slice(0, 10);
+
+            for (const id of ids) {
+                const m = await read.messages(id);
+                msgs.push({ id: id.toNumber(), token: m.token, amount: m.amount, timestamp: m.timestamp, status: m.status, sender: m.sender });
+            }
+            // Exclude Completed (status === 2) from public top list
+            const visible = msgs.filter(m => Number(m.status) !== 2);
+            sortMsgs(visible);
+            const top = visible.slice(0, 10);
+
+
             const box = $('publicTop'); box.innerHTML = '';
+            let index = 0;
             for (const m of top) {
                 const row = document.createElement('div');
                 row.className = 'border rounded-xl p-3 text-sm flex justify-between';
-                row.innerHTML = `<span> ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</span > <span class="font-mono">${m.amount.toString()}</span>`;
+                //row.innerHTML = `<span> ${new Date(Number(m.timestamp) * 1000).toLocaleString()}</span > <span class="font-mono">${m.amount.toString()}</span>`;
+                const ts = new Date(Number(m.timestamp) * 1000).toLocaleString();
+                const statusChip = (Number(m.status) === 1)
+                    ? `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-700 align-middle">Read</span>`
+                    : '';
+                const mineChip = (me && m.sender && m.sender.toLowerCase() === me.toLowerCase())
+                    ? `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-700 align-middle">Yours</span>`
+                    : '';
+                index += 1;
+                const posChip = `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-slate-200 text-slate-700 align-middle" >#${index}</span>`;
+                row.innerHTML = `<span>${posChip}: ${ts}${statusChip}${mineChip}</span><span class="font-mono">Fee: ${ethers.utils.formatUnits(m.amount, tokenDecimals)}</span>`;
+
                 box.appendChild(row);
             }
 
@@ -435,7 +463,7 @@
             if (contract && me) {
                 const mineIds = await read.senderMessageIds(me);
                 const mine = [];
-                for (const id of mineIds) { const m = await read.messages(id); if (m.leader.toLowerCase() === leaderAddr.toLowerCase()) mine.push({ id: id.toNumber(), amount: m.amount, timestamp: m.timestamp, status: m.status }); }
+                for (const id of mineIds) { const m = await read.messages(id); mine.push({ id: id.toNumber(), amount: m.amount, timestamp: m.timestamp, status: m.status, leader: m.leader }); }
                 sortMsgs(msgs);
                 const sortedIds = msgs.map(x => x.id);
                 const ui = $('userMsgs'); ui.innerHTML = '';
@@ -443,7 +471,7 @@
                     const pos = sortedIds.indexOf(m.id) + 1; // 1-based
                     const row = document.createElement('div');
                     row.className = 'border rounded-xl p-3 text-sm flex justify-between';
-                    row.innerHTML = `<span> ID #${m.id} — ${['New', 'Read', 'Completed'][m.status]}</span > <span>Position: ${pos || '-'}</span>`;
+                    row.innerHTML = `<span> ID #${m.id} — ${['New', 'Read', 'Completed'][m.status]}</span > <span>To: ${m.leader || '-'}</span>`;
                     ui.appendChild(row);
                 }
             }
@@ -458,8 +486,7 @@
             const token = $('feeTokenAddr').textContent.trim();
             const amountHuman = $('feeAmount').value.trim();
             const erc = new ethers.Contract(token, ERC20_ABI, signer);
-            const dec = await erc.decimals();
-            const amount = ethers.utils.parseUnits(amountHuman, dec);
+            const amount = ethers.utils.parseUnits(amountHuman, tokenDecimals);
 
             $('sendStatus').textContent = 'Approving…';
             const allowance = await erc.allowance(me, CONTRACT_ADDRESS);
