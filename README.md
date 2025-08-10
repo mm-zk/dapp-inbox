@@ -9,6 +9,11 @@ Things to do:
 [X] - restrict which ERC20 tokens can be sent
 [X] - nicer info about pending messages etc.
 [X] - better handling of the numbers / digits.
-[] - handle network changes correctly.
+[X] - handle network changes correctly.
 [X] - once message is complete - remove from position.
 [X] - top messages - only show not-processed ones.
+
+
+## Contracts:
+
+Deployed to Era mainnet at 0xD51ee76e6005E57F3bC9AAfF20D78B2f1D5808d2

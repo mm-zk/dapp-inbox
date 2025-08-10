@@ -176,8 +176,8 @@
 
     <script>
         // ====== CONFIG ======
-        const CONTRACT_ADDRESS = "0x0165878A594ca255338adfa4d48449f69242Eb8F"; // <- replace after deploy
         // Network config (hardcode your target network here)
+        const MAINNET_CONTRACT_ADDRESS = "0xD51ee76e6005E57F3bC9AAfF20D78B2f1D5808d2"; // <- replace after deploy
         const MAINNET_CHAIN_ID = '0x144'; // 0x144 = 324 (Matter mainnet), 0x7a69 - local testnet
         const MAINNET_CHAIN_PARAMS = {
             chainId: MAINNET_CHAIN_ID,
@@ -187,6 +187,7 @@
             blockExplorerUrls: ['https://explorer.zksync.io/']
         };
 
+        const LOCAL_CONTRACT_ADDRESS = "0x0165878A594ca255338adfa4d48449f69242Eb8F"; // <- replace after deploy
         const LOCAL_CHAIN_ID = '0x7a69'; // 0x144 = 324 (Matter mainnet), 0x7a69 - local testnet
         const LOCAL_CHAIN_PARAMS = {
             chainId: LOCAL_CHAIN_ID,
@@ -201,6 +202,7 @@
         //const TARGET_CHAIN_PARAMS = MAINNET_CHAIN_PARAMS;
         const TARGET_CHAIN_ID = LOCAL_CHAIN_ID;
         const TARGET_CHAIN_PARAMS = LOCAL_CHAIN_PARAMS;
+        const CONTRACT_ADDRESS = LOCAL_CONTRACT_ADDRESS;
 
 
         const ABI = [
